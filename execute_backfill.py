@@ -15,6 +15,7 @@ import sys
 import shutil
 import sqlite3
 import json
+import time
 import argparse
 import subprocess
 from typing import Dict, Any
@@ -31,34 +32,58 @@ def parse_args():
     parser.add_argument("--old-ide-dir", default=DEFAULT_OLD_IDE_DIR, help="Path to 2.5.x antigravity-ide source directory")
     parser.add_argument("--destination-dir", default=DEFAULT_DESTINATION_DIR, help="Path to 2.6.0 destination directory")
     parser.add_argument("--migrate-unmarked", action="store_true", help="Experimental: Migrate conversations lacking .done markers")
+    parser.add_argument("--run-even-antigravity-active", action="store_true", help="Bypass check ensuring Antigravity Desktop is closed")
     parser.add_argument("--skip-backup", action="store_true", help="Skip creating safety backups")
     return parser.parse_args()
 
-def check_process_not_running():
+def check_process_not_running(allow_running: bool = False):
+    if allow_running:
+        print("⚠️  WARNING: --run-even-antigravity-active specified. Bypassing active process check.")
+        print("    Ensure Desktop is not running to avoid background clobbering of protobuf/db cache.")
+        return
+
     try:
         if sys.platform == "win32":
             res = subprocess.run(["tasklist"], stdout=subprocess.PIPE, text=True, errors="replace")
             if "Antigravity.exe" in res.stdout or "antigravity.exe" in res.stdout:
                 print("ERROR: Antigravity Desktop is currently running!", file=sys.stderr)
                 print("Please quit Antigravity Desktop completely before running execute_backfill.py.", file=sys.stderr)
+                print("If this is a false positive, re-run with: --run-even-antigravity-active", file=sys.stderr)
                 sys.exit(1)
         else:
             res = subprocess.run(["pgrep", "-f", "antigravity"], stdout=subprocess.PIPE, text=True)
             if res.returncode == 0:
                 pids = res.stdout.strip().splitlines()
                 desktop_running = False
+                trigger_info = ""
+                my_pid = str(os.getpid())
+
                 for pid in pids:
+                    if pid == my_pid:
+                        continue
                     try:
-                        with open(f"/proc/{pid}/cmdline", "r") as f:
-                            cmd = f.read()
-                            if "remote-control serve" not in cmd and "execute_backfill" not in cmd and "check_and_catalog" not in cmd:
-                                desktop_running = True
-                                break
+                        with open(f"/proc/{pid}/cmdline", "r", errors="replace") as f:
+                            # In /proc/<pid>/cmdline, args are separated by null bytes '\0'
+                            cmd = f.read().replace('\0', ' ').strip()
+                            if not cmd:
+                                continue
+                            if "remote-control" in cmd and "serve" in cmd:
+                                continue
+                            if "execute_backfill" in cmd or "check_and_catalog" in cmd:
+                                continue
+                            if "antigravity-acp" in cmd or "agy_acp_server" in cmd or "localharness_external" in cmd:
+                                continue
+                            desktop_running = True
+                            trigger_info = f"PID {pid} ({cmd[:80]}...)"
+                            break
                     except Exception:
-                        desktop_running = True
+                        pass
                 if desktop_running:
-                    print("ERROR: Antigravity Desktop is currently running!", file=sys.stderr)
+                    print("ERROR: Antigravity Desktop appears to be running!", file=sys.stderr)
+                    if trigger_info:
+                        print(f"Triggered by process: {trigger_info}", file=sys.stderr)
                     print("Please quit Antigravity Desktop completely before running execute_backfill.py.", file=sys.stderr)
+                    print("If this is a false positive, re-run with: --run-even-antigravity-active", file=sys.stderr)
                     sys.exit(1)
     except FileNotFoundError:
         pass
@@ -266,19 +291,22 @@ def main():
         print("Please run check_and_catalog.py first to generate the manifest.", file=sys.stderr)
         sys.exit(1)
 
-    check_process_not_running()
+    check_process_not_running(allow_running=args.run_even_antigravity_active)
 
     db_path = os.path.join(args.destination_dir, "conversation_summaries.db")
     agy_path = os.path.join(args.destination_dir, "agyhub_summaries_proto.pb")
 
     if not args.skip_backup:
         print("\n--- Safety Backups ---")
+        ts = time.strftime("%Y%m%d_%H%M%S")
         if os.path.isfile(db_path):
-            shutil.copy2(db_path, db_path + ".bak")
-            print(f"✓ Backup created: {db_path}.bak")
+            db_bak = f"{db_path}.{ts}.bak"
+            shutil.copy2(db_path, db_bak)
+            print(f"✓ Backup created: {db_bak}")
         if os.path.isfile(agy_path):
-            shutil.copy2(agy_path, agy_path + ".bak")
-            print(f"✓ Backup created: {agy_path}.bak")
+            agy_bak = f"{agy_path}.{ts}.bak"
+            shutil.copy2(agy_path, agy_bak)
+            print(f"✓ Backup created: {agy_bak}")
 
     # 1. Copy missing physical files
     copy_missing_files(args.old_ide_dir, args.destination_dir)

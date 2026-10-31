@@ -122,7 +122,7 @@ Open `scratch_file.yml` in your editor. You will see:
 Look for entries where `projectAssigned: false` and `projectIdToAssign: ""`:
 
 ```yaml
-- workspace: /home/benedict/www/ossRepos/myProject
+- folder: /home/benedict/www/ossRepos/myProject
   projectAssigned: false
   projectIdToAssign: ""  # <-- Paste the matching project UUID here
   conversationsCount:
@@ -151,7 +151,8 @@ Look for entries where `projectAssigned: false` and `projectIdToAssign: ""`:
 
 #### Helpful Flags:
 - `--migrate-unmarked`: *(Experimental)* Also scans for sessions lacking the internal `.<id>.done` sentinel file in 2.5.x, registers them into SQLite, and touches the marker.
-- `--skip-backup`: Disables creating `.bak` copies before execution (not recommended).
+- `--run-even-antigravity-active`: Bypass the active Antigravity process safety check (use when running from external CLI agents or in case of process false positives).
+- `--skip-backup`: Disables creating safety copies before execution (not recommended).
 
 ---
 
@@ -201,10 +202,10 @@ When `project_id` is empty, Desktop cannot associate the conversation with any p
 ### Rollback
 If you ever need to revert the changes:
 `execute_backfill.py` creates timestamped backups of modified files:
-- `~/.gemini/antigravity/conversation_summaries.db.bak`
-- `~/.gemini/antigravity/agyhub_summaries_proto.pb.bak`
+- `~/.gemini/antigravity/conversation_summaries.db.<timestamp>.bak`
+- `~/.gemini/antigravity/agyhub_summaries_proto.pb.<timestamp>.bak`
 
-Simply copy the `.bak` files back over the originals while Desktop is closed.
+Simply copy the timestamped backup files back over the originals while Desktop is closed.
 
 ---
 

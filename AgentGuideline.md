@@ -117,7 +117,8 @@ uv run --with pyyaml --with blackboxprotobuf python3 execute_backfill.py \
 
 #### Optional Flags:
 - `--migrate-unmarked`: *(Experimental)* Scans for conversations lacking a `.<id>.done` sentinel file in the source folder, registers them into SQLite, and touches `.<id>.done`.
-- `--skip-backup`: Skips creating `.bak` copies of SQLite and `.pb` files before execution.
+- `--run-even-antigravity-active`: Bypasses the process check ensuring Antigravity Desktop is closed.
+- `--skip-backup`: Skips creating safety copies of SQLite and `.pb` files before execution.
 
 ### Step 4: Verification
 1. Launch Antigravity Desktop.
